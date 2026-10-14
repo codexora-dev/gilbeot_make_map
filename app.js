@@ -177,9 +177,11 @@ function setStatus(message) {
 
 /* ---------- 격자 처리 ---------- */
 
+
 function snapToGrid(value) {
   return Math.round(value / GRID_SIZE) * GRID_SIZE;
 }
+
 
 function snapSize(value) {
   return Math.max(GRID_SIZE, snapToGrid(value));
