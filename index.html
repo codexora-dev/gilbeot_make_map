@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f5f7fb">
+  <title>길벗 지도 제작소</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">길</div>
+      <div>
+        <h1>길벗 지도 제작소</h1>
+        <p>우리 학교의 공간과 이동 경로를 직접 설계하세요.</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button id="downloadJsonBtn" class="button secondary">JSON 내보내기</button>
+      <button id="importButton" class="button secondary">JSON 가져오기</button>
+      <input id="importJsonInput" type="file" accept=".json,application/json" hidden>
+      <button id="exportPngBtn" class="button primary">PNG 이미지 저장</button>
+    </div>
+  </header>
+
+  <main class="app-layout">
+    <aside class="sidebar">
+      <section class="panel">
+        <div class="panel-heading"><h2>지도 설정</h2></div>
+        <label class="field-label" for="mapName">지도 이름</label>
+        <input id="mapName" class="text-input" maxlength="80" value="우리 학교 지도">
+        <div class="field-row">
+          <div class="field-grow">
+            <label class="field-label" for="floorSelect">작업 층</label>
+            <select id="floorSelect" class="text-input"></select>
+          </div>
+          <button id="addFloorBtn" class="button secondary small">층 추가</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading"><h2>편집 도구</h2></div>
+        <div class="tool-grid">
+          <button class="tool-button active" data-tool="select" aria-pressed="true">
+            <span class="tool-icon">↖</span><span>선택 / 이동</span>
+          </button>
+          <button class="tool-button" data-tool="place" aria-pressed="false">
+            <span class="tool-icon">▦</span><span>장소 추가</span>
+          </button>
+          <button class="tool-button" data-tool="route" aria-pressed="false">
+            <span class="tool-icon">〰</span><span>경로 그리기</span>
+          </button>
+        </div>
+        <p id="toolHint" class="hint">장소나 경로를 선택하거나 장소를 드래그해 이동하세요.</p>
+        <div id="routeActions" class="route-actions" hidden>
+          <button id="finishRouteBtn" class="button primary full">경로 완성</button>
+          <button id="cancelRouteBtn" class="button secondary full">그리기 취소</button>
+          <p class="hint">지도에서 시작점과 꺾이는 지점을 차례로 누르세요. 마지막 지점을 더블클릭하거나 ‘경로 완성’을 누르세요.</p>
+        </div>
+      </section>
+
+      <section class="panel" id="placeEditor">
+        <div class="panel-heading"><h2>장소 속성</h2></div>
+        <p class="empty-message">장소를 선택하면 이름, 종류, 크기를 수정할 수 있어요.</p>
+        <div id="placeFields" hidden>
+          <label class="field-label" for="placeName">장소 이름</label>
+          <input id="placeName" class="text-input" maxlength="60">
+          <label class="field-label" for="placeType">장소 종류</label>
+          <select id="placeType" class="text-input">
+            <option value="classroom">교실</option>
+            <option value="corridor">복도 공간</option>
+            <option value="stairs">계단</option>
+            <option value="restroom">화장실</option>
+            <option value="entrance">출입구</option>
+            <option value="elevator">엘리베이터</option>
+            <option value="office">교무실</option>
+            <option value="other">기타 장소</option>
+          </select>
+          <div class="field-row">
+            <div class="field-grow">
+              <label class="field-label" for="placeWidth">가로 (지도 단위)</label>
+              <input id="placeWidth" class="text-input" type="number" min="25" max="500" step="25">
+            </div>
+            <div class="field-grow">
+              <label class="field-label" for="placeHeight">세로 (지도 단위)</label>
+              <input id="placeHeight" class="text-input" type="number" min="25" max="500" step="25">
+            </div>
+          </div>
+          <button id="applySizeBtn" class="button secondary full">크기 적용</button>
+          <label class="check-row"><input id="placeAccessible" type="checkbox"> 접근성 관련 장소 / 시설</label>
+          <label class="field-label" for="placeNotes">메모</label>
+          <textarea id="placeNotes" class="text-input" rows="3" maxlength="500" placeholder="장소에 대한 설명"></textarea>
+          <button id="deletePlaceBtn" class="button danger full">장소 삭제</button>
+        </div>
+      </section>
+
+      <section class="panel" id="routeEditor">
+        <div class="panel-heading"><h2>이동 경로 속성</h2></div>
+        <p class="empty-message">완성된 경로의 선을 선택하면 속성을 수정할 수 있어요.</p>
+        <div id="routeFields" hidden>
+          <label class="field-label" for="routeName">경로 이름</label>
+          <input id="routeName" class="text-input" maxlength="60">
+          <label class="check-row"><input id="routeAccessible" type="checkbox"> 휠체어 등 접근 가능</label>
+          <label class="check-row"><input id="routeVerified" type="checkbox"> 현장 확인 완료</label>
+          <label class="field-label" for="routeNotes">메모</label>
+          <textarea id="routeNotes" class="text-input" rows="3" maxlength="500" placeholder="예: 본관 1층 중앙 복도"></textarea>
+          <button id="deleteRouteBtn" class="button danger full">경로 삭제</button>
+        </div>
+      </section>
+
+      <section class="panel stats-panel">
+        <div class="panel-heading"><h2>현재 층 요약</h2></div>
+        <div class="stats">
+          <div class="stat"><strong id="placeCount">0</strong><span>장소</span></div>
+          <div class="stat"><strong id="routeCount">0</strong><span>이동 경로</span></div>
+        </div>
+        <p id="status" class="status" role="status">지도를 준비하고 있어요.</p>
+        <button id="copyJsonBtn" class="button secondary full">JSON 미리보기 / 복사</button>
+        <textarea id="jsonPreview" class="text-input json-preview" rows="7" hidden readonly></textarea>
+        <button id="newMapBtn" class="button danger full">새 지도 만들기</button>
+      </section>
+    </aside>
+
+    <section class="workspace">
+      <div class="workspace-heading">
+        <div>
+          <h2 id="workspaceTitle">우리 학교 지도 · 1층</h2>
+          <p>장소는 사각형, 이동 경로는 실제 복도를 따라 그려주세요.</p>
+        </div>
+        <span class="autosave-badge"><span></span> 자동 저장</span>
+      </div>
+      <div class="map-card">
+        <div class="map-legend">
+          <span><i class="legend-place"></i> 장소</span>
+          <span><i class="legend-route"></i> 일반 경로</span>
+          <span><i class="legend-accessible"></i> 접근 가능 경로</span>
+        </div>
+        <svg id="mapCanvas" viewBox="0 0 1000 700" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="학교 지도 편집 캔버스">
+          <defs>
+            <pattern id="gridPattern" width="25" height="25" patternUnits="userSpaceOnUse">
+              <path d="M 25 0 L 0 0 0 25" fill="none" stroke="#e4e9f1" stroke-width="1"/>
+            </pattern>
+          </defs>
+          <rect width="1000" height="700" fill="#ffffff"/>
+          <rect id="gridLayer" width="1000" height="700" fill="url(#gridPattern)"/>
+          <g id="buildingLayer"></g>
+          <g id="routeLayer"></g>
+          <g id="placeLayer"></g>
+          <g id="draftLayer"></g>
+        </svg>
+        <p id="canvasHint" class="canvas-hint">장소를 선택하거나 드래그해서 이동하세요.</p>
+      </div>
+      <div class="workspace-footer">
+        <span>그리드 한 칸 = 25 지도 단위</span>
+        <span>브라우저에 자동 저장 · JSON 백업 권장</span>
+      </div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
