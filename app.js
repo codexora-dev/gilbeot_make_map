@@ -507,16 +507,26 @@ canvas.addEventListener("dblclick", event => {
 // This avoids half-cell drift while moving horizontally or vertically.
 canvas.addEventListener("pointermove", event => {
   if (!draggingPlaceId) return;
+
   const floor = getActiveFloor();
   const place = getPlace(draggingPlaceId, floor);
   if (!place) return;
+
   const point = getSvgPoint(event);
+
+  // 드래그한 거리만큼 이동하되 격자 간격에 맞춤
   const dx = snapToGrid(point.x - dragStartPointerX);
   const dy = snapToGrid(point.y - dragStartPointerY);
-  if (dx !== 0 || dy !== 0) pointerMoved = true;
-  place.x = clamp(dragStartPlaceX + dx, 25, MAP_WIDTH - 25);
-  place.y = clamp(dragStartPlaceY + dy, 25, MAP_HEIGHT - 25);
+
+  if (dx !== 0 || dy !== 0) {pointerMoved = true;}
+
+  // 장소의 위치를 격자선에 맞춤
+  place.x = clamp(snapToGrid(dragStartPlaceX + dx),25,MAP_WIDTH - place.width - 25);
+
+  place.y = clamp(snapToGrid(dragStartPlaceY + dy),25,MAP_HEIGHT - place.height - 25);
+
   suppressNextClick = pointerMoved;
+
   refreshMap();
 });
 function stopDragging() {
