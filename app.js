@@ -295,10 +295,10 @@ function renderBuilding() {
     buildingLayer.appendChild(group);
   }
 
-  // 위쪽 본관
+  // 위쪽 후관
   addBuilding(
     125, 50, 750, 150,
-    "본관", "#eaf2ff"
+    "후관", "#eaf2ff"
   );
 
   // 오른쪽 연결 건물: 기존 왼쪽 연결 건물의 좌우 반전
@@ -307,10 +307,10 @@ function renderBuilding() {
     "연결 건물", "#eef2f7"
   );
 
-  // 아래쪽 후관
+  // 아래쪽 본관
   addBuilding(
     125, 500, 750, 150,
-    "후관", "#e9f8ef"
+    "본관", "#e9f8ef"
   );
 
   // 중앙 열린 공간
