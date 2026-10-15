@@ -352,13 +352,13 @@ function renderBuilding() {
   // 오른쪽 연결 건물: 기존 왼쪽 연결 건물의 좌우 반전
   addBuilding(
     725, 50, 150, 600,
-    "연결 건물", "#eaf2ff"
+    "연결 건물", "#eef2f7"
   );
 
   // 아래쪽 본관
   addBuilding(
     125, 500, 750, 150,
-    "본관", "#e9f8ef"
+    "본관", "#eaf2ff"
   );
 
   // 중앙 열린 공간
