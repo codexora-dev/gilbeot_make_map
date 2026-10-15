@@ -53,6 +53,10 @@ let dragStartPointerY = 0;
 let suppressNextClick = false;
 let pointerMoved = false;
 
+/* =========================
+   기본 유틸리티
+========================= */
+
 function makeId() {
   return "id-" + Date.now().toString(36) + "-" +
     Math.random().toString(36).slice(2, 9);
@@ -101,7 +105,10 @@ function snapToGrid(value) {
 }
 
 function snapSize(value) {
-  return Math.max(GRID_SIZE, snapToGrid(value));
+  return Math.max(
+    25,
+    Math.round(value / GRID_SIZE) * GRID_SIZE
+  );
 }
 
 function setStatus(message) {
@@ -110,57 +117,93 @@ function setStatus(message) {
 
 function saveState(message = "변경 사항을 자동 저장했습니다.") {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(state)
+    );
+
     setStatus(message);
   } catch (error) {
     console.error(error);
+
     setStatus(
       "브라우저 저장 공간에 저장하지 못했습니다. JSON으로 백업해 주세요."
     );
   }
 }
 
+/* =========================
+   데이터 정규화 및 불러오기
+========================= */
+
 function normalizeState(data) {
-  if (!data || !Array.isArray(data.floors) || !data.floors.length) {
+  if (
+    !data ||
+    !Array.isArray(data.floors) ||
+    !data.floors.length
+  ) {
     throw new Error("올바른 지도 파일이 아닙니다.");
   }
 
   const floors = data.floors.map((floor, index) => {
     const places = (
       Array.isArray(floor.places) ? floor.places : []
-    ).map(place => ({
-      id: String(place.id || makeId()),
-      name: String(place.name || "이름 없는 장소").slice(0, 60),
-      type: COLORS[place.type] ? place.type : "other",
-      x: clamp(
-        snapToGrid(Number(place.x) || 200),
-        25,
-        MAP_WIDTH - 25
-      ),
-      y: clamp(
-        snapToGrid(Number(place.y) || 100),
-        25,
-        MAP_HEIGHT - 25
-      ),
-      width: clamp(
+    ).map(place => {
+      const width = clamp(
         snapSize(Number(place.width) || 50),
         25,
         500
-      ),
-      height: clamp(
+      );
+
+      const height = clamp(
         snapSize(Number(place.height) || 50),
         25,
         500
-      ),
-      accessible: place.accessible === true,
-      notes: String(place.notes || "").slice(0, 500)
-    }));
+      );
+
+      return {
+        id: String(place.id || makeId()),
+
+        name: String(
+          place.name || "이름 없는 장소"
+        ).slice(0, 60),
+
+        type: COLORS[place.type]
+          ? place.type
+          : "other",
+
+        x: clamp(
+          snapToGrid(Number(place.x) || 200),
+          25,
+          MAP_WIDTH - width / 2
+        ),
+
+        y: clamp(
+          snapToGrid(Number(place.y) || 100),
+          25,
+          MAP_HEIGHT - height / 2
+        ),
+
+        width,
+        height,
+
+        accessible: place.accessible === true,
+
+        notes: String(
+          place.notes || ""
+        ).slice(0, 500)
+      };
+    });
 
     const routes = (
       Array.isArray(floor.routes) ? floor.routes : []
     ).map(route => ({
       id: String(route.id || makeId()),
-      name: String(route.name || "이동 경로").slice(0, 60),
+
+      name: String(
+        route.name || "이동 경로"
+      ).slice(0, 60),
+
       points: Array.isArray(route.points)
         ? route.points
             .filter(point =>
@@ -173,6 +216,7 @@ function normalizeState(data) {
                 0,
                 MAP_WIDTH
               ),
+
               y: clamp(
                 snapToGrid(Number(point.y)),
                 0,
@@ -180,14 +224,22 @@ function normalizeState(data) {
               )
             }))
         : [],
+
       accessible: route.accessible === true,
       verified: route.verified === true,
-      notes: String(route.notes || "").slice(0, 500)
+
+      notes: String(
+        route.notes || ""
+      ).slice(0, 500)
     })).filter(route => route.points.length >= 2);
 
     return {
       id: String(floor.id || makeId()),
-      name: String(floor.name || `${index + 1}층`).slice(0, 30),
+
+      name: String(
+        floor.name || `${index + 1}층`
+      ).slice(0, 30),
+
       places,
       routes
     };
@@ -201,7 +253,11 @@ function normalizeState(data) {
 
   return {
     version: 3,
-    mapName: String(data.mapName || "우리 학교 지도").slice(0, 80),
+
+    mapName: String(
+      data.mapName || "우리 학교 지도"
+    ).slice(0, 80),
+
     activeFloorId,
     floors
   };
@@ -213,35 +269,51 @@ function loadState() {
       localStorage.getItem(STORAGE_KEY) ||
       localStorage.getItem("gilbeot-map-data-v2");
 
-    if (!raw) return createInitialState();
+    if (!raw) {
+      return createInitialState();
+    }
 
     const data = JSON.parse(raw);
 
     if (data && Array.isArray(data.floors)) {
       data.floors = data.floors.map(floor => ({
         ...floor,
-        routes: Array.isArray(floor.routes) ? floor.routes : []
+
+        routes: Array.isArray(floor.routes)
+          ? floor.routes
+          : []
       }));
     }
 
     return normalizeState(data);
   } catch (error) {
-    console.error("저장 데이터 불러오기 실패:", error);
+    console.error(
+      "저장 데이터 불러오기 실패:",
+      error
+    );
+
     return createInitialState();
   }
 }
+
+/* =========================
+   SVG 처리
+========================= */
 
 function getSvgPoint(event) {
   const rect = canvas.getBoundingClientRect();
 
   return {
     x: clamp(
-      (event.clientX - rect.left) / rect.width * MAP_WIDTH,
+      (event.clientX - rect.left) /
+        rect.width * MAP_WIDTH,
       0,
       MAP_WIDTH
     ),
+
     y: clamp(
-      (event.clientY - rect.top) / rect.height * MAP_HEIGHT,
+      (event.clientY - rect.top) /
+        rect.height * MAP_HEIGHT,
       0,
       MAP_HEIGHT
     )
@@ -261,23 +333,35 @@ function createSvgElement(tag, attributes = {}) {
   return element;
 }
 
-/* 학교 건물 배치: ㄷ자 형태를 좌우 반전 */
+/* =========================
+   학교 건물 배치도
+========================= */
+
 function renderBuilding() {
   buildingLayer.replaceChildren();
 
-  function addBuilding(x, y, width, height, title, color) {
+  function addBuilding(
+    x,
+    y,
+    width,
+    height,
+    title,
+    color
+  ) {
     const group = createSvgElement("g");
 
-    group.appendChild(createSvgElement("rect", {
-      x,
-      y,
-      width,
-      height,
-      rx: 8,
-      fill: color,
-      stroke: "#94a3b8",
-      "stroke-width": 2
-    }));
+    group.appendChild(
+      createSvgElement("rect", {
+        x,
+        y,
+        width,
+        height,
+        rx: 8,
+        fill: color,
+        stroke: "#94a3b8",
+        "stroke-width": 2
+      })
+    );
 
     const label = createSvgElement("text", {
       x: x + width / 2,
@@ -291,73 +375,93 @@ function renderBuilding() {
     });
 
     label.textContent = title;
+
     group.appendChild(label);
     buildingLayer.appendChild(group);
   }
 
-  // 위쪽: 후관
-  addBuilding(125, 50, 750, 150, "후관", "#e9f8ef");
+  /*
+   * 좌우 반전된 ㄷ자형 배치도
+   *
+   * 본관: 위쪽
+   * 후관: 아래쪽
+   * 연결 건물: 오른쪽
+   * 개방 방향: 왼쪽
+   *
+   * 건물 배경은 지도 안내용이며
+   * 실제 장소와 이동 경로는 별도로 편집합니다.
+   */
 
-  // 오른쪽 연결 건물
-  addBuilding(725, 50, 150, 600, "연결 건물", "#eef2f7");
+  addBuilding(
+    125, 50, 750, 150,
+    "본관",
+    "#eaf2ff"
+  );
 
-  // 아래쪽: 본관
-  addBuilding(125, 500, 750, 150, "본관", "#eaf2ff");
+  addBuilding(
+    725, 50, 150, 600,
+    "연결 건물",
+    "#eef2f7"
+  );
 
-  // 중앙 열린 공간
-  buildingLayer.appendChild(createSvgElement("rect", {
-    x: 135,
-    y: 205,
-    width: 580,
-    height: 290,
-    rx: 10,
-    fill: "#f8fafc",
-    stroke: "#d8e1eb",
-    "stroke-dasharray": "7 7",
-    "pointer-events": "none"
-  }));
+  addBuilding(
+    125, 500, 750, 150,
+    "후관",
+    "#e9f8ef"
+  );
 
-  const courtyardLabel = createSvgElement("text", {
-    x: 425,
-    y: 340,
-    "text-anchor": "middle",
-    "font-size": 23,
-    "font-weight": 700,
-    fill: "#94a3b8",
-    "pointer-events": "none"
-  });
+  buildingLayer.appendChild(
+    createSvgElement("rect", {
+      x: 135,
+      y: 205,
+      width: 580,
+      height: 290,
+      rx: 10,
+      fill: "#f8fafc",
+      stroke: "#d8e1eb",
+      "stroke-dasharray": "7 7",
+      "pointer-events": "none"
+    })
+  );
+
+  const courtyardLabel = createSvgElement(
+    "text",
+    {
+      x: 425,
+      y: 350,
+      "text-anchor": "middle",
+      "font-size": 23,
+      "font-weight": 700,
+      fill: "#94a3b8",
+      "pointer-events": "none"
+    }
+  );
 
   courtyardLabel.textContent = "중앙 열린 공간";
+
   buildingLayer.appendChild(courtyardLabel);
 
-  const openingLabel = createSvgElement("text", {
-    x: 70,
-    y: 350,
-    "text-anchor": "middle",
-    "font-size": 18,
-    "font-weight": 700,
-    fill: "#64748b",
-    "pointer-events": "none"
-  });
+  const openingLabel = createSvgElement(
+    "text",
+    {
+      x: 70,
+      y: 350,
+      "text-anchor": "middle",
+      "font-size": 18,
+      "font-weight": 700,
+      fill: "#64748b",
+      "pointer-events": "none"
+    }
+  );
 
   openingLabel.textContent = "개방";
+
   buildingLayer.appendChild(openingLabel);
 }
 
-  // 왼쪽 개방 구역
-  const openingLabel = createSvgElement("text", {
-    x: 70,
-    y: 350,
-    "text-anchor": "middle",
-    "font-size": 18,
-    "font-weight": 700,
-    fill: "#64748b",
-    "pointer-events": "none"
-  });
-
-  openingLabel.textContent = "개방";
-  buildingLayer.appendChild(openingLabel);
-}
+/* =========================
+   장소 렌더링
+========================= */
 
 function renderPlaces() {
   placeLayer.replaceChildren();
@@ -366,6 +470,7 @@ function renderPlaces() {
 
   floor.places.forEach(place => {
     const selected = place.id === selectedPlaceId;
+
     const width = place.width || 50;
     const height = place.height || 50;
 
@@ -374,16 +479,18 @@ function renderPlaces() {
       "data-place-id": place.id
     });
 
-    group.appendChild(createSvgElement("rect", {
-      x: -width / 2,
-      y: -height / 2,
-      width,
-      height,
-      rx: 5,
-      fill: COLORS[place.type] || COLORS.other,
-      stroke: selected ? "#111827" : "#ffffff",
-      "stroke-width": selected ? 4 : 2.5
-    }));
+    group.appendChild(
+      createSvgElement("rect", {
+        x: -width / 2,
+        y: -height / 2,
+        width,
+        height,
+        rx: 5,
+        fill: COLORS[place.type] || COLORS.other,
+        stroke: selected ? "#111827" : "#ffffff",
+        "stroke-width": selected ? 4 : 2.5
+      })
+    );
 
     if (place.accessible) {
       const mark = createSvgElement("text", {
@@ -414,18 +521,27 @@ function renderPlaces() {
     });
 
     label.textContent = place.name;
+
     group.appendChild(label);
 
     group.addEventListener("pointerdown", event => {
-      if (event.button !== 0 || currentTool !== "select") return;
+      if (
+        event.button !== 0 ||
+        currentTool !== "select"
+      ) {
+        return;
+      }
 
       const point = getSvgPoint(event);
 
       draggingPlaceId = place.id;
+
       dragStartPlaceX = place.x;
       dragStartPlaceY = place.y;
+
       dragStartPointerX = point.x;
       dragStartPointerY = point.y;
+
       pointerMoved = false;
 
       selectedPlaceId = place.id;
@@ -433,6 +549,7 @@ function renderPlaces() {
 
       renderEditors();
       renderPlaces();
+
       event.stopPropagation();
     });
 
@@ -451,6 +568,7 @@ function renderPlaces() {
 
       selectedPlaceId = place.id;
       selectedRouteId = null;
+
       renderAll();
     });
 
@@ -458,8 +576,14 @@ function renderPlaces() {
   });
 }
 
+/* =========================
+   이동 경로 렌더링
+========================= */
+
 function pointsToString(points) {
-  return points.map(point => `${point.x},${point.y}`).join(" ");
+  return points
+    .map(point => `${point.x},${point.y}`)
+    .join(" ");
 }
 
 function renderRoutes() {
@@ -469,10 +593,13 @@ function renderRoutes() {
 
   floor.routes.forEach(route => {
     const selected = route.id === selectedRouteId;
-    const stroke = route.accessible ? "#16a34a" : "#64748b";
+
+    const stroke = route.accessible
+      ? "#16a34a"
+      : "#64748b";
+
     const points = pointsToString(route.points);
 
-    // 투명한 넓은 선으로 경로를 쉽게 선택할 수 있도록 함
     const hitLine = createSvgElement("polyline", {
       points,
       fill: "none",
@@ -486,25 +613,32 @@ function renderRoutes() {
     hitLine.addEventListener("click", event => {
       event.stopPropagation();
 
-      if (currentTool === "route") return;
+      if (currentTool === "route") {
+        return;
+      }
 
       selectedRouteId = route.id;
       selectedPlaceId = null;
+
       renderAll();
     });
 
     routeLayer.appendChild(hitLine);
 
-    routeLayer.appendChild(createSvgElement("polyline", {
-      points,
-      fill: "none",
-      stroke: selected ? "#2563eb" : stroke,
-      "stroke-width": selected ? 8 : 5,
-      "stroke-linecap": "round",
-      "stroke-linejoin": "round",
-      "stroke-dasharray": route.verified ? "none" : "10 7",
-      "pointer-events": "none"
-    }));
+    routeLayer.appendChild(
+      createSvgElement("polyline", {
+        points,
+        fill: "none",
+        stroke: selected ? "#2563eb" : stroke,
+        "stroke-width": selected ? 8 : 5,
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        "stroke-dasharray": route.verified
+          ? "none"
+          : "10 7",
+        "pointer-events": "none"
+      })
+    );
 
     route.points.forEach((point, index) => {
       const handle = createSvgElement("circle", {
@@ -513,29 +647,39 @@ function renderRoutes() {
         r: selected ? 7 : 3.5,
         fill: selected ? "#2563eb" : stroke,
         stroke: "#ffffff",
-        "stroke-width": 1.5,
+        "stroke-width": 2,
         "pointer-events": selected ? "all" : "none",
         cursor: selected ? "move" : "default"
       });
 
-      // 선택된 경로의 각 지점을 드래그하여 수정
       if (selected) {
-        handle.addEventListener("pointerdown", event => {
-          if (event.button !== 0 || currentTool !== "select") return;
+        handle.addEventListener(
+          "pointerdown",
+          event => {
+            if (
+              event.button !== 0 ||
+              currentTool !== "select"
+            ) {
+              return;
+            }
 
-          event.preventDefault();
-          event.stopPropagation();
+            event.preventDefault();
+            event.stopPropagation();
 
-          draggingRouteId = route.id;
-          draggingRoutePointIndex = index;
-          pointerMoved = false;
+            draggingRouteId = route.id;
+            draggingRoutePointIndex = index;
 
-          try {
-            canvas.setPointerCapture(event.pointerId);
-          } catch (_) {
-            // 포인터 캡처를 지원하지 않는 환경에서는 기본 동작 유지
+            pointerMoved = false;
+
+            try {
+              canvas.setPointerCapture(
+                event.pointerId
+              );
+            } catch (error) {
+              // 포인터 캡처를 지원하지 않아도 동작합니다.
+            }
           }
-        });
+        );
       }
 
       routeLayer.appendChild(handle);
@@ -551,51 +695,71 @@ function renderRoutes() {
         });
 
         start.textContent = "시작";
+
         routeLayer.appendChild(start);
       }
     });
   });
 }
 
+/* =========================
+   경로 작성 미리보기
+========================= */
+
 function renderDraft() {
   draftLayer.replaceChildren();
 
-  if (draftPoints.length === 0) return;
+  if (draftPoints.length === 0) {
+    return;
+  }
 
   if (draftPoints.length >= 2) {
-    draftLayer.appendChild(createSvgElement("polyline", {
-      points: pointsToString(draftPoints),
-      fill: "none",
-      stroke: "#2563eb",
-      "stroke-width": 5,
-      "stroke-linecap": "round",
-      "stroke-linejoin": "round",
-      "stroke-dasharray": "9 6",
-      "pointer-events": "none"
-    }));
+    draftLayer.appendChild(
+      createSvgElement("polyline", {
+        points: pointsToString(draftPoints),
+        fill: "none",
+        stroke: "#2563eb",
+        "stroke-width": 5,
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        "stroke-dasharray": "9 6",
+        "pointer-events": "none"
+      })
+    );
   }
 
   draftPoints.forEach((point, index) => {
-    draftLayer.appendChild(createSvgElement("circle", {
-      cx: point.x,
-      cy: point.y,
-      r: 7,
-      fill: index === 0 ? "#16a34a" : "#2563eb",
-      stroke: "#ffffff",
-      "stroke-width": 2,
-      "pointer-events": "none"
-    }));
+    draftLayer.appendChild(
+      createSvgElement("circle", {
+        cx: point.x,
+        cy: point.y,
+        r: 7,
+        fill: index === 0
+          ? "#16a34a"
+          : "#2563eb",
+        stroke: "#ffffff",
+        "stroke-width": 2,
+        "pointer-events": "none"
+      })
+    );
   });
 }
 
+/* =========================
+   편집기 UI 렌더링
+========================= */
+
 function renderFloorSelect() {
   const select = $("floorSelect");
+
   select.replaceChildren();
 
   state.floors.forEach(floor => {
     const option = document.createElement("option");
+
     option.value = floor.id;
     option.textContent = floor.name;
+
     select.appendChild(option);
   });
 
@@ -608,7 +772,10 @@ function renderEditors() {
     : null;
 
   $("placeFields").hidden = !place;
-  $("placeEditor").querySelector(".empty-message").hidden = !!place;
+
+  $("placeEditor").querySelector(
+    ".empty-message"
+  ).hidden = !!place;
 
   if (place) {
     $("placeName").value = place.name;
@@ -624,7 +791,10 @@ function renderEditors() {
     : null;
 
   $("routeFields").hidden = !route;
-  $("routeEditor").querySelector(".empty-message").hidden = !!route;
+
+  $("routeEditor").querySelector(
+    ".empty-message"
+  ).hidden = !!route;
 
   if (route) {
     $("routeName").value = route.name;
@@ -639,6 +809,7 @@ function renderCounts() {
 
   $("placeCount").textContent = floor.places.length;
   $("routeCount").textContent = floor.routes.length;
+
   $("workspaceTitle").textContent =
     `${state.mapName} · ${floor.name}`;
 }
@@ -662,6 +833,10 @@ function refreshMap() {
   renderCounts();
 }
 
+/* =========================
+   도구 선택
+========================= */
+
 function setTool(tool) {
   currentTool = tool;
 
@@ -673,17 +848,27 @@ function setTool(tool) {
     const active = button.dataset.tool === tool;
 
     button.classList.toggle("active", active);
-    button.setAttribute("aria-pressed", String(active));
+
+    button.setAttribute(
+      "aria-pressed",
+      String(active)
+    );
   });
 
   const hints = {
-    select: "장소나 경로를 선택하세요. 장소는 드래그해서 이동할 수 있어요.",
-    place: "지도에서 원하는 위치를 누르면 장소가 추가됩니다.",
-    route: "지도에서 시작점과 꺾이는 지점을 차례로 눌러 경로를 그리세요."
+    select:
+      "장소나 경로를 선택하세요. 장소는 드래그해서 이동할 수 있어요.",
+
+    place:
+      "지도에서 원하는 위치를 누르면 장소가 추가됩니다.",
+
+    route:
+      "지도에서 시작점과 꺾이는 지점을 차례로 눌러 경로를 그리세요."
   };
 
   $("toolHint").textContent = hints[tool];
   $("canvasHint").textContent = hints[tool];
+
   $("routeActions").hidden = tool !== "route";
 
   canvas.style.cursor =
@@ -694,18 +879,39 @@ function setTool(tool) {
   renderDraft();
 }
 
+/* =========================
+   장소 추가
+========================= */
+
 function addPlace(x, y) {
   const floor = getActiveFloor();
+
   const type = $("placeType").value || "classroom";
 
   const place = {
     id: makeId(),
-    name: `${TYPE_NAMES[type] || "장소"} ${floor.places.length + 1}`,
+
+    name: `${
+      TYPE_NAMES[type] || "장소"
+    } ${floor.places.length + 1}`,
+
     type,
-    x: clamp(snapToGrid(x), 25, MAP_WIDTH - 25),
-    y: clamp(snapToGrid(y), 25, MAP_HEIGHT - 25),
+
+    x: clamp(
+      snapToGrid(x),
+      25,
+      MAP_WIDTH - 25
+    ),
+
+    y: clamp(
+      snapToGrid(y),
+      25,
+      MAP_HEIGHT - 25
+    ),
+
     width: 50,
     height: 50,
+
     accessible: false,
     notes: ""
   };
@@ -716,26 +922,48 @@ function addPlace(x, y) {
   selectedRouteId = null;
 
   setTool("select");
+
   renderAll();
-  saveState("장소를 추가하고 자동 저장했습니다.");
+
+  saveState(
+    "장소를 추가하고 자동 저장했습니다."
+  );
 }
+
+/* =========================
+   이동 경로 작성
+========================= */
 
 function addRoutePoint(point) {
   const snapped = {
-    x: clamp(snapToGrid(point.x), 0, MAP_WIDTH),
-    y: clamp(snapToGrid(point.y), 0, MAP_HEIGHT)
+    x: clamp(
+      snapToGrid(point.x),
+      0,
+      MAP_WIDTH
+    ),
+
+    y: clamp(
+      snapToGrid(point.y),
+      0,
+      MAP_HEIGHT
+    )
   };
 
   const last = draftPoints[draftPoints.length - 1];
 
-  if (last && last.x === snapped.x && last.y === snapped.y) {
+  if (
+    last &&
+    last.x === snapped.x &&
+    last.y === snapped.y
+  ) {
     return;
   }
 
   draftPoints.push(snapped);
 
   $("canvasHint").textContent =
-    `경로에 ${draftPoints.length}개 지점을 추가했어요. 더블클릭하거나 ‘경로 완성’을 누르세요.`;
+    `경로에 ${draftPoints.length}개 지점을 추가했어요. ` +
+    "더블클릭하거나 ‘경로 완성’을 누르세요.";
 
   renderDraft();
 }
@@ -749,7 +977,10 @@ function addRoutePointAtPlace(place) {
 
 function finishRoute() {
   if (draftPoints.length < 2) {
-    setStatus("경로를 완성하려면 서로 다른 지점이 2개 이상 필요합니다.");
+    setStatus(
+      "경로를 완성하려면 서로 다른 지점이 2개 이상 필요합니다."
+    );
+
     return;
   }
 
@@ -757,37 +988,60 @@ function finishRoute() {
 
   const route = {
     id: makeId(),
+
     name: `이동 경로 ${floor.routes.length + 1}`,
-    points: draftPoints.map(point => ({ ...point })),
+
+    points: draftPoints.map(point => ({
+      ...point
+    })),
+
     accessible: false,
     verified: false,
     notes: ""
   };
 
   floor.routes.push(route);
+
   draftPoints = [];
 
   selectedRouteId = route.id;
   selectedPlaceId = null;
 
   setTool("select");
+
   renderAll();
+
   saveState("이동 경로를 추가했습니다.");
 }
 
 function cancelRoute() {
   draftPoints = [];
+
   renderDraft();
+
   setStatus("경로 그리기를 취소했습니다.");
 }
 
+/* =========================
+   삭제 기능
+========================= */
+
 function deleteSelectedPlace() {
   const floor = getActiveFloor();
-  const place = selectedPlaceId && getPlace(selectedPlaceId);
 
-  if (!place) return;
+  const place = selectedPlaceId
+    ? getPlace(selectedPlaceId)
+    : null;
 
-  if (!confirm(`"${place.name}" 장소를 삭제할까요?`)) {
+  if (!place) {
+    return;
+  }
+
+  if (
+    !confirm(
+      `"${place.name}" 장소를 삭제할까요?`
+    )
+  ) {
     return;
   }
 
@@ -798,16 +1052,26 @@ function deleteSelectedPlace() {
   selectedPlaceId = null;
 
   renderAll();
+
   saveState("장소를 삭제했습니다.");
 }
 
 function deleteSelectedRoute() {
   const floor = getActiveFloor();
-  const route = selectedRouteId && getRoute(selectedRouteId);
 
-  if (!route) return;
+  const route = selectedRouteId
+    ? getRoute(selectedRouteId)
+    : null;
 
-  if (!confirm(`"${route.name}" 경로를 삭제할까요?`)) {
+  if (!route) {
+    return;
+  }
+
+  if (
+    !confirm(
+      `"${route.name}" 경로를 삭제할까요?`
+    )
+  ) {
     return;
   }
 
@@ -818,10 +1082,14 @@ function deleteSelectedRoute() {
   selectedRouteId = null;
 
   renderAll();
+
   saveState("이동 경로를 삭제했습니다.");
 }
 
-// 지도 클릭: 장소 추가, 경로 지점 추가, 선택 해제
+/* =========================
+   지도 클릭 이벤트
+========================= */
+
 canvas.addEventListener("click", event => {
   if (suppressNextClick) {
     suppressNextClick = false;
@@ -844,55 +1112,97 @@ canvas.addEventListener("click", event => {
   } else {
     selectedPlaceId = null;
     selectedRouteId = null;
+
     renderAll();
   }
 });
 
 canvas.addEventListener("dblclick", event => {
-  if (currentTool !== "route") return;
+  if (currentTool !== "route") {
+    return;
+  }
 
   event.preventDefault();
+
   finishRoute();
 });
 
-// 장소 이동 및 경로 지점 수정
+/* =========================
+   드래그 이동
+========================= */
+
 canvas.addEventListener("pointermove", event => {
   const point = getSvgPoint(event);
 
-  // 선택된 경로의 꺾이는 지점을 드래그하여 수정
+  // 경로의 개별 지점 이동
   if (draggingRouteId) {
     const floor = getActiveFloor();
-    const route = getRoute(draggingRouteId, floor);
+
+    const route = getRoute(
+      draggingRouteId,
+      floor
+    );
+
+    if (
+      !route ||
+      !route.points[draggingRoutePointIndex]
+    ) {
+      return;
+    }
+
+    const snappedX = clamp(
+      snapToGrid(point.x),
+      0,
+      MAP_WIDTH
+    );
+
+    const snappedY = clamp(
+      snapToGrid(point.y),
+      0,
+      MAP_HEIGHT
+    );
 
     const routePoint =
-      route && route.points[draggingRoutePointIndex];
+      route.points[draggingRoutePointIndex];
 
-    if (!routePoint) return;
-
-    const x = clamp(snapToGrid(point.x), 0, MAP_WIDTH);
-    const y = clamp(snapToGrid(point.y), 0, MAP_HEIGHT);
-
-    if (routePoint.x !== x || routePoint.y !== y) {
-      routePoint.x = x;
-      routePoint.y = y;
+    if (
+      routePoint.x !== snappedX ||
+      routePoint.y !== snappedY
+    ) {
+      routePoint.x = snappedX;
+      routePoint.y = snappedY;
 
       pointerMoved = true;
+
       refreshMap();
     }
 
     return;
   }
 
-  // 기존 장소 드래그
-  if (!draggingPlaceId) return;
+  // 장소 이동
+  if (!draggingPlaceId) {
+    return;
+  }
 
   const floor = getActiveFloor();
-  const place = getPlace(draggingPlaceId, floor);
 
-  if (!place) return;
+  const place = getPlace(
+    draggingPlaceId,
+    floor
+  );
 
-  const dx = snapToGrid(point.x - dragStartPointerX);
-  const dy = snapToGrid(point.y - dragStartPointerY);
+  if (!place) {
+    return;
+  }
+
+  const dx = snapToGrid(
+    point.x - dragStartPointerX
+  );
+
+  const dy = snapToGrid(
+    point.y - dragStartPointerY
+  );
 
   if (dx !== 0 || dy !== 0) {
     pointerMoved = true;
@@ -900,32 +1210,36 @@ canvas.addEventListener("pointermove", event => {
 
   place.x = clamp(
     snapToGrid(dragStartPlaceX + dx),
-    25,
-    MAP_WIDTH - place.width - 25
+    place.width / 2,
+    MAP_WIDTH - place.width / 2
   );
 
   place.y = clamp(
     snapToGrid(dragStartPlaceY + dy),
-    25,
-    MAP_HEIGHT - place.height - 25
+    place.height / 2,
+    MAP_HEIGHT - place.height / 2
   );
 
   suppressNextClick = pointerMoved;
+
   refreshMap();
 });
 
 function stopDragging() {
-  const wasDraggingPlace = !!draggingPlaceId;
-  const wasDraggingRoute = !!draggingRouteId;
+  const movedRoute = !!draggingRouteId;
+  const movedPlace = !!draggingPlaceId;
+
   const didMove = pointerMoved;
 
-  draggingPlaceId = null;
   draggingRouteId = null;
   draggingRoutePointIndex = -1;
+  draggingPlaceId = null;
 
-  if (didMove && wasDraggingRoute) {
-    saveState("이동 경로를 수정하고 저장했습니다.");
-  } else if (didMove && wasDraggingPlace) {
+  if (didMove && movedRoute) {
+    saveState(
+      "이동 경로를 수정하고 저장했습니다."
+    );
+  } else if (didMove && movedPlace) {
     saveState("장소 위치를 저장했습니다.");
   }
 
@@ -935,11 +1249,25 @@ function stopDragging() {
   }, 0);
 }
 
-canvas.addEventListener("pointerup", stopDragging);
-canvas.addEventListener("pointercancel", stopDragging);
-window.addEventListener("pointerup", stopDragging);
+canvas.addEventListener(
+  "pointerup",
+  stopDragging
+);
 
-// 지도 이름
+canvas.addEventListener(
+  "pointercancel",
+  stopDragging
+);
+
+window.addEventListener(
+  "pointerup",
+  stopDragging
+);
+
+/* =========================
+   지도 이름
+========================= */
+
 $("mapName").addEventListener("input", event => {
   state.mapName = event.target.value.slice(0, 80);
 
@@ -949,7 +1277,10 @@ $("mapName").addEventListener("input", event => {
   saveState();
 });
 
-// 층 선택
+/* =========================
+   층 관리
+========================= */
+
 $("floorSelect").addEventListener("change", event => {
   state.activeFloorId = event.target.value;
 
@@ -958,17 +1289,19 @@ $("floorSelect").addEventListener("change", event => {
   draftPoints = [];
 
   renderAll();
+
   saveState("작업 층을 변경했습니다.");
 });
 
-// 층 추가
 $("addFloorBtn").addEventListener("click", () => {
   const name = prompt(
     "새 층 이름을 입력하세요.",
     `${state.floors.length + 1}층`
   );
 
-  if (name === null) return;
+  if (name === null) {
+    return;
+  }
 
   const cleanName = name.trim().slice(0, 30);
 
@@ -987,24 +1320,42 @@ $("addFloorBtn").addEventListener("click", () => {
   draftPoints = [];
 
   renderAll();
+
   saveState("새 층을 추가했습니다.");
 });
 
-// 도구 버튼
+/* =========================
+   도구 버튼
+========================= */
+
 document.querySelectorAll("[data-tool]").forEach(button => {
   button.addEventListener("click", () => {
     setTool(button.dataset.tool);
   });
 });
 
-$("finishRouteBtn").addEventListener("click", finishRoute);
-$("cancelRouteBtn").addEventListener("click", cancelRoute);
+$("finishRouteBtn").addEventListener(
+  "click",
+  finishRoute
+);
 
-// 장소 이름
+$("cancelRouteBtn").addEventListener(
+  "click",
+  cancelRoute
+);
+
+/* =========================
+   장소 속성 편집
+========================= */
+
 $("placeName").addEventListener("input", event => {
-  const place = selectedPlaceId && getPlace(selectedPlaceId);
+  const place = selectedPlaceId
+    ? getPlace(selectedPlaceId)
+    : null;
 
-  if (!place) return;
+  if (!place) {
+    return;
+  }
 
   place.name = event.target.value.slice(0, 60);
 
@@ -1012,304 +1363,255 @@ $("placeName").addEventListener("input", event => {
   saveState();
 });
 
-// 장소 종류
 $("placeType").addEventListener("change", event => {
-  const place = selectedPlaceId && getPlace(selectedPlaceId);
+  const place = selectedPlaceId
+    ? getPlace(selectedPlaceId)
+    : null;
 
-  if (!place) return;
+  if (!place) {
+    return;
+  }
 
   place.type = event.target.value;
 
   refreshMap();
+
   saveState("장소 종류를 변경했습니다.");
 });
 
-// 접근성
-$("placeAccessible").addEventListener("change", event => {
-  const place = selectedPlaceId && getPlace(selectedPlaceId);
+$("placeAccessible").addEventListener(
+  "change",
+  event => {
+    const place = selectedPlaceId
+      ? getPlace(selectedPlaceId)
+      : null;
 
-  if (!place) return;
+    if (!place) {
+      return;
+    }
 
-  place.accessible = event.target.checked;
+    place.accessible = event.target.checked;
 
-  refreshMap();
-  saveState();
-});
+    refreshMap();
+    saveState();
+  }
+);
 
-// 장소 메모
 $("placeNotes").addEventListener("input", event => {
-  const place = selectedPlaceId && getPlace(selectedPlaceId);
+  const place = selectedPlaceId
+    ? getPlace(selectedPlaceId)
+    : null;
 
-  if (!place) return;
+  if (!place) {
+    return;
+  }
 
   place.notes = event.target.value.slice(0, 500);
 
   saveState();
 });
 
-// 장소 크기 적용
+/* =========================
+   장소 크기 변경
+========================= */
+
 $("applySizeBtn").addEventListener("click", () => {
-  const place = selectedPlaceId && getPlace(selectedPlaceId);
+  const place = selectedPlaceId
+    ? getPlace(selectedPlaceId)
+    : null;
 
   if (!place) {
-    setStatus("먼저 크기를 변경할 장소를 선택하세요.");
+    setStatus(
+      "먼저 크기를 변경할 장소를 선택하세요."
+    );
+
     return;
   }
 
   const width = Number($("placeWidth").value);
   const height = Number($("placeHeight").value);
 
-  if (!Number.isFinite(width) || !Number.isFinite(height)) {
-    setStatus("가로와 세로 크기를 숫자로 입력하세요.");
+  if (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height)
+  ) {
+    setStatus(
+      "가로와 세로 크기를 숫자로 입력하세요."
+    );
+
     return;
   }
 
-  place.width = clamp(snapSize(width), 25, 500);
-  place.height = clamp(snapSize(height), 25, 500);
+  place.width = clamp(
+    snapSize(width),
+    25,
+    500
+  );
+
+  place.height = clamp(
+    snapSize(height),
+    25,
+    500
+  );
+
+  place.x = clamp(
+    snapToGrid(place.x),
+    place.width / 2,
+    MAP_WIDTH - place.width / 2
+  );
+
+  place.y = clamp(
+    snapToGrid(place.y),
+    place.height / 2,
+    MAP_HEIGHT - place.height / 2
+  );
 
   $("placeWidth").value = place.width;
   $("placeHeight").value = place.height;
 
   refreshMap();
+
   saveState("장소 크기를 적용했습니다.");
 });
 
-$("deletePlaceBtn").addEventListener("click", deleteSelectedPlace);
+$("deletePlaceBtn").addEventListener(
+  "click",
+  deleteSelectedPlace
+);
 
-// 경로 이름
+/* =========================
+   이동 경로 속성 편집
+========================= */
+
 $("routeName").addEventListener("input", event => {
-  const route = selectedRouteId && getRoute(selectedRouteId);
+  const route = selectedRouteId
+    ? getRoute(selectedRouteId)
+    : null;
 
-  if (!route) return;
+  if (!route) {
+    return;
+  }
 
   route.name = event.target.value.slice(0, 60);
 
   saveState();
 });
 
-// 경로 접근성
-$("routeAccessible").addEventListener("change", event => {
-  const route = selectedRouteId && getRoute(selectedRouteId);
+$("routeAccessible").addEventListener(
+  "change",
+  event => {
+    const route = selectedRouteId
+      ? getRoute(selectedRouteId)
+      : null;
 
-  if (!route) return;
+    if (!route) {
+      return;
+    }
 
-  route.accessible = event.target.checked;
+    route.accessible = event.target.checked;
 
-  refreshMap();
-  saveState("경로 접근성 설정을 변경했습니다.");
-});
+    refreshMap();
 
-// 현장 확인 상태
-$("routeVerified").addEventListener("change", event => {
-  const route = selectedRouteId && getRoute(selectedRouteId);
+    saveState(
+      "경로 접근성 설정을 변경했습니다."
+    );
+  }
+);
 
-  if (!route) return;
+$("routeVerified").addEventListener(
+  "change",
+  event => {
+    const route = selectedRouteId
+      ? getRoute(selectedRouteId)
+      : null;
 
-  route.verified = event.target.checked;
+    if (!route) {
+      return;
+    }
 
-  refreshMap();
-  saveState("현장 확인 상태를 변경했습니다.");
-});
+    route.verified = event.target.checked;
 
-// 경로 메모
+    refreshMap();
+
+    saveState(
+      "현장 확인 상태를 변경했습니다."
+    );
+  }
+);
+
 $("routeNotes").addEventListener("input", event => {
-  const route = selectedRouteId && getRoute(selectedRouteId);
+  const route = selectedRouteId
+    ? getRoute(selectedRouteId)
+    : null;
 
-  if (!route) return;
+  if (!route) {
+    return;
+  }
 
   route.notes = event.target.value.slice(0, 500);
 
   saveState();
 });
 
-$("deleteRouteBtn").addEventListener("click", deleteSelectedRoute);
+$("deleteRouteBtn").addEventListener(
+  "click",
+  deleteSelectedRoute
+);
 
-// 파일 다운로드
+/* =========================
+   JSON 내보내기 및 가져오기
+========================= */
+
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
+
   const anchor = document.createElement("a");
 
   anchor.href = url;
   anchor.download = filename;
 
   document.body.appendChild(anchor);
+
   anchor.click();
   anchor.remove();
 
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 1000);
 }
 
 function safeFilename(name) {
-  return (name || "gilbeot-map")
-    .replace(/[\\/:*?"<>|]/g, "_")
-    .trim() || "gilbeot-map";
+  return (
+    name || "gilbeot-map"
+  ).replace(/[\\/:*?"<>|]/g, "_").trim() ||
+    "gilbeot-map";
 }
 
-// JSON 내보내기
 function exportJson() {
   const blob = new Blob(
     [JSON.stringify(state, null, 2)],
-    { type: "application/json;charset=utf-8" }
+    {
+      type: "application/json;charset=utf-8"
+    }
   );
 
-  downloadBlob(blob, `${safeFilename(state.mapName)}.json`);
+  downloadBlob(
+    blob,
+    `${safeFilename(state.mapName)}.json`
+  );
+
   setStatus("JSON 파일을 내보냈습니다.");
 }
 
-$("downloadJsonBtn").addEventListener("click", exportJson);
+$("downloadJsonBtn").addEventListener(
+  "click",
+  exportJson
+);
 
-// JSON 복사
-$("copyJsonBtn").addEventListener("click", async () => {
-  const preview = $("jsonPreview");
+$("copyJsonBtn").addEventListener(
+  "click",
+  async () => {
+    const preview = $("jsonPreview");
 
-  preview.hidden = false;
-  preview.value = JSON.stringify(state, null, 2);
-  preview.focus();
-  preview.select();
-
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(preview.value);
-      setStatus("JSON을 클립보드에 복사했습니다.");
-    } else {
-      setStatus("JSON 미리보기에서 직접 선택해 복사하세요.");
-    }
-  } catch {
-    setStatus("JSON 미리보기에서 직접 선택해 복사하세요.");
-  }
-});
-
-// JSON 가져오기
-$("importButton").addEventListener("click", () => {
-  $("importJsonInput").click();
-});
-
-$("importJsonInput").addEventListener("change", async event => {
-  const file = event.target.files[0];
-
-  if (!file) return;
-
-  try {
-    if (file.size > 10 * 1024 * 1024) {
-      throw new Error("10MB 이하의 JSON 파일만 가져올 수 있습니다.");
-    }
-
-    const imported = normalizeState(
-      JSON.parse(await file.text())
-    );
-
-    if (!confirm(
-      "현재 지도를 가져온 파일로 교체할까요? 먼저 현재 지도를 JSON으로 백업하는 것을 권장합니다."
-    )) {
-      return;
-    }
-
-    state = imported;
-
-    selectedPlaceId = null;
-    selectedRouteId = null;
-    draftPoints = [];
-
-    renderAll();
-    saveState("JSON 파일을 가져왔습니다.");
-  } catch (error) {
-    alert("파일을 가져오지 못했습니다.\n" + error.message);
-  } finally {
-    event.target.value = "";
-  }
-});
-
-// PNG 내보내기
-function exportPng() {
-  const clone = canvas.cloneNode(true);
-
-  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-  clone.setAttribute("width", MAP_WIDTH);
-  clone.setAttribute("height", MAP_HEIGHT);
-
-  const svgBlob = new Blob(
-    [new XMLSerializer().serializeToString(clone)],
-    { type: "image/svg+xml;charset=utf-8" }
-  );
-
-  const url = URL.createObjectURL(svgBlob);
-  const image = new Image();
-
-  image.onload = () => {
-    try {
-      const output = document.createElement("canvas");
-
-      output.width = MAP_WIDTH * 2;
-      output.height = MAP_HEIGHT * 2;
-
-      const context = output.getContext("2d");
-
-      context.scale(2, 2);
-      context.fillStyle = "#ffffff";
-      context.fillRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
-      context.drawImage(image, 0, 0, MAP_WIDTH, MAP_HEIGHT);
-
-      output.toBlob(blob => {
-        URL.revokeObjectURL(url);
-
-        if (!blob) {
-          setStatus("PNG 파일을 만들지 못했습니다.");
-          return;
-        }
-
-        downloadBlob(
-          blob,
-          `${safeFilename(state.mapName)}-${safeFilename(getActiveFloor().name)}.png`
-        );
-
-        setStatus("PNG 이미지를 저장했습니다.");
-      }, "image/png");
-    } catch (error) {
-      URL.revokeObjectURL(url);
-      console.error(error);
-      setStatus("PNG 변환에 실패했습니다.");
-    }
-  };
-
-  image.onerror = () => {
-    URL.revokeObjectURL(url);
-    setStatus("지도 이미지를 불러오지 못했습니다.");
-  };
-
-  image.src = url;
-}
-
-$("exportPngBtn").addEventListener("click", exportPng);
-
-// 새 지도
-$("newMapBtn").addEventListener("click", () => {
-  if (!confirm(
-    "현재 지도를 초기화하고 새 지도를 만들까요?\n중요한 지도는 먼저 JSON으로 내보내세요."
-  )) {
-    return;
-  }
-
-  state = createInitialState();
-
-  selectedPlaceId = null;
-  selectedRouteId = null;
-  draftPoints = [];
-
-  renderAll();
-  setTool("select");
-  saveState("새 지도를 만들었습니다.");
-});
-
-// 앱 시작
-state = loadState();
-
-if (
-  !state.activeFloorId ||
-  !state.floors.some(floor => floor.id === state.activeFloorId)
-) {
-  state.activeFloorId = state.floors[0].id;
-}
-
-renderAll();
-setTool("select");
-saveState("지도가 준비되었습니다.");
+    preview.hidden = false;
+    preview.value = JSON.stringify(state, null, 2);
