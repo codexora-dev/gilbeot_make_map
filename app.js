@@ -27,6 +27,8 @@ let selectedPlaceId = null;
 let selectedRouteId = null;
 let draftPoints = [];
 let draggingPlaceId = null;
+let draggingRouteId = null;
+let draggingRoutePointIndex = -1;
 let dragStartPlaceX = 0;
 let dragStartPlaceY = 0;
 let dragStartPointerX = 0;
@@ -265,44 +267,88 @@ function pointsToString(points) {
 function renderRoutes() {
   routeLayer.replaceChildren();
   const floor = getActiveFloor();
+
   floor.routes.forEach(route => {
     const selected = route.id === selectedRouteId;
     const stroke = route.accessible ? "#16a34a" : "#64748b";
     const points = pointsToString(route.points);
 
-    // Wider transparent line makes the route easier to select on touch screens.
     const hitLine = createSvgElement("polyline", {
-      points, fill: "none", stroke: "transparent", "stroke-width": 20,
-      "stroke-linecap": "round", "stroke-linejoin": "round",
+      points,
+      fill: "none",
+      stroke: "transparent",
+      "stroke-width": 20,
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
       "data-route-id": route.id
     });
+
     hitLine.addEventListener("click", event => {
       event.stopPropagation();
       if (currentTool === "route") return;
+
       selectedRouteId = route.id;
       selectedPlaceId = null;
       renderAll();
     });
+
     routeLayer.appendChild(hitLine);
 
     routeLayer.appendChild(createSvgElement("polyline", {
-      points, fill: "none", stroke: selected ? "#2563eb" : stroke,
-      "stroke-width": selected ? 8 : 5, "stroke-linecap": "round",
-      "stroke-linejoin": "round", "stroke-dasharray": route.verified ? "none" : "10 7",
+      points,
+      fill: "none",
+      stroke: selected ? "#2563eb" : stroke,
+      "stroke-width": selected ? 8 : 5,
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      "stroke-dasharray": route.verified ? "none" : "10 7",
       "pointer-events": "none"
     }));
 
     route.points.forEach((point, index) => {
-      routeLayer.appendChild(createSvgElement("circle", {
-        cx: point.x, cy: point.y, r: selected ? 5 : 3.5,
-        fill: selected ? "#2563eb" : stroke, stroke: "#ffffff",
-        "stroke-width": 1.5, "pointer-events": "none"
-      }));
+      const handle = createSvgElement("circle", {
+        cx: point.x,
+        cy: point.y,
+        r: selected ? 7 : 3.5,
+        fill: selected ? "#2563eb" : stroke,
+        stroke: "#ffffff",
+        "stroke-width": 2,
+        "pointer-events": selected ? "all" : "none",
+        cursor: selected ? "move" : "default"
+      });
+
+      // 선택된 경로의 지점을 드래그할 수 있도록 설정
+      if (selected) {
+        handle.addEventListener("pointerdown", event => {
+          if (event.button !== 0 || currentTool !== "select") return;
+
+          event.preventDefault();
+          event.stopPropagation();
+
+          draggingRouteId = route.id;
+          draggingRoutePointIndex = index;
+          pointerMoved = false;
+
+          try {
+            canvas.setPointerCapture(event.pointerId);
+          } catch (error) {
+            // 포인터 캡처를 지원하지 않는 경우에도 계속 동작
+          }
+        });
+      }
+
+      routeLayer.appendChild(handle);
+
       if (selected && index === 0) {
         const start = createSvgElement("text", {
-          x: point.x + 8, y: point.y - 8, "font-size": 12,
-          "font-weight": 800, fill: "#1d4ed8", "pointer-events": "none"
+          x: point.x + 8,
+          y: point.y - 8,
+          "font-size": 12,
+          "font-weight": 800,
+          fill: "#1d4ed8",
+          "pointer-events": "none"
         });
+
         start.textContent = "시작";
         routeLayer.appendChild(start);
       }
@@ -506,34 +552,76 @@ canvas.addEventListener("dblclick", event => {
 // Drag by grid-cell increments relative to the initial pointer position.
 // This avoids half-cell drift while moving horizontally or vertically.
 canvas.addEventListener("pointermove", event => {
+  const point = getSvgPoint(event);
+
+  // 이동 경로의 지점 드래그
+  if (draggingRouteId) {
+    const floor = getActiveFloor();
+    const route = getRoute(draggingRouteId, floor);
+
+    if (!route || !route.points[draggingRoutePointIndex]) return;
+
+    const snappedX = clamp(snapToGrid(point.x), 0, MAP_WIDTH);
+    const snappedY = clamp(snapToGrid(point.y), 0, MAP_HEIGHT);
+
+    const routePoint = route.points[draggingRoutePointIndex];
+
+    if (routePoint.x !== snappedX || routePoint.y !== snappedY) {
+      routePoint.x = snappedX;
+      routePoint.y = snappedY;
+      pointerMoved = true;
+      refreshMap();
+    }
+
+    return;
+  }
+
+  // 기존 장소 드래그
   if (!draggingPlaceId) return;
 
   const floor = getActiveFloor();
   const place = getPlace(draggingPlaceId, floor);
   if (!place) return;
 
-  const point = getSvgPoint(event);
-
-  // 드래그한 거리만큼 이동하되 격자 간격에 맞춤
   const dx = snapToGrid(point.x - dragStartPointerX);
   const dy = snapToGrid(point.y - dragStartPointerY);
 
-  if (dx !== 0 || dy !== 0) {pointerMoved = true;}
+  if (dx !== 0 || dy !== 0) pointerMoved = true;
 
-  // 장소의 위치를 격자선에 맞춤
-  place.x = clamp(snapToGrid(dragStartPlaceX + dx),25,MAP_WIDTH - place.width - 25);
+  place.x = clamp(
+    snapToGrid(dragStartPlaceX + dx),
+    25,
+    MAP_WIDTH - place.width - 25
+  );
 
-  place.y = clamp(snapToGrid(dragStartPlaceY + dy),25,MAP_HEIGHT - place.height - 25);
+  place.y = clamp(
+    snapToGrid(dragStartPlaceY + dy),
+    25,
+    MAP_HEIGHT - place.height - 25
+  );
 
   suppressNextClick = pointerMoved;
-
   refreshMap();
 });
 function stopDragging() {
-  if (!draggingPlaceId) return;
+  const movedRoute = !!draggingRouteId;
+  const movedPlace = !!draggingPlaceId;
+  const didMove = pointerMoved;
+
+  draggingRouteId = null;
+  draggingRoutePointIndex = -1;
   draggingPlaceId = null;
-  if (pointerMoved) saveState("장소 위치를 저장했습니다.");
-  setTimeout(() => { suppressNextClick = false; pointerMoved = false; }, 0);
+
+  if (didMove && movedRoute) {
+    saveState("이동 경로를 수정하고 저장했습니다.");
+  } else if (didMove && movedPlace) {
+    saveState("장소 위치를 저장했습니다.");
+  }
+
+  setTimeout(() => {
+    suppressNextClick = false;
+    pointerMoved = false;
+  }, 0);
 }
 canvas.addEventListener("pointerup", stopDragging);
 canvas.addEventListener("pointercancel", stopDragging);
