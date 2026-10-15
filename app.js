@@ -148,38 +148,82 @@ function getSvgPoint(event) {
     y: clamp((event.clientY - rect.top) / rect.height * MAP_HEIGHT, 0, MAP_HEIGHT)
   };
 }
-function createSvgElement(tag, attributes = {}) {
-  const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
-  Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, String(value)));
-  return element;
-}
 
+function renderBuilding() {
+  buildingLayer.replaceChildren();
 
-  // 기본 ㄷ자형 학교 배치도: 좌우 반전
+  function addBuilding(x, y, width, height, title, color) {
+    const group = createSvgElement("g");
+
+    group.appendChild(createSvgElement("rect", {
+      x, y, width, height,
+      rx: 8,
+      fill: color,
+      stroke: "#94a3b8",
+      "stroke-width": 2
+    }));
+
+    const label = createSvgElement("text", {
+      x: x + width / 2,
+      y: y + height / 2,
+      "text-anchor": "middle",
+      "dominant-baseline": "middle",
+      "font-size": 24,
+      "font-weight": 800,
+      fill: "#334155",
+      "pointer-events": "none"
+    });
+
+    label.textContent = title;
+    group.appendChild(label);
+    buildingLayer.appendChild(group);
+  }
+
+  // 좌우 반전된 ㄷ자형 배치
   addBuilding(125, 50, 750, 150, "본관", "#eaf2ff");
   addBuilding(725, 50, 150, 600, "연결 건물", "#eef2f7");
   addBuilding(125, 500, 750, 150, "후관", "#e9f8ef");
 
-  // 가운데 흰색 통로 및 열린 공간
+  // 중앙 흰색 공간
   buildingLayer.appendChild(createSvgElement("rect", {
-    x: 135, y: 205, width: 580, height: 290, rx: 10,
-    fill: "#f8fafc", stroke: "#d8e1eb", "stroke-dasharray": "7 7",
+    x: 135,
+    y: 205,
+    width: 580,
+    height: 290,
+    rx: 10,
+    fill: "#f8fafc",
+    stroke: "#d8e1eb",
+    "stroke-dasharray": "7 7",
     "pointer-events": "none"
   }));
 
   const courtyardLabel = createSvgElement("text", {
-    x: 425, y: 340, "text-anchor": "middle", "font-size": 23,
-    "font-weight": 700, fill: "#94a3b8", "pointer-events": "none"
+    x: 425,
+    y: 350,
+    "text-anchor": "middle",
+    "font-size": 23,
+    "font-weight": 700,
+    fill: "#94a3b8",
+    "pointer-events": "none"
   });
+
   courtyardLabel.textContent = "중앙 열린 공간";
   buildingLayer.appendChild(courtyardLabel);
 
   const openingLabel = createSvgElement("text", {
-    x: 70, y: 350, "text-anchor": "middle", "font-size": 18,
-    "font-weight": 700, fill: "#64748b", "pointer-events": "none"
+    x: 70,
+    y: 350,
+    "text-anchor": "middle",
+    "font-size": 18,
+    "font-weight": 700,
+    fill: "#64748b",
+    "pointer-events": "none"
   });
+
   openingLabel.textContent = "개방";
   buildingLayer.appendChild(openingLabel);
+}
+
 
 
 function renderPlaces() {
