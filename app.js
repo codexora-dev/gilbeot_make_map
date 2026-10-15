@@ -295,6 +295,54 @@ function renderBuilding() {
     buildingLayer.appendChild(group);
   }
 
+  // 위쪽: 후관
+  addBuilding(125, 50, 750, 150, "후관", "#e9f8ef");
+
+  // 오른쪽 연결 건물
+  addBuilding(725, 50, 150, 600, "연결 건물", "#eef2f7");
+
+  // 아래쪽: 본관
+  addBuilding(125, 500, 750, 150, "본관", "#eaf2ff");
+
+  // 중앙 열린 공간
+  buildingLayer.appendChild(createSvgElement("rect", {
+    x: 135,
+    y: 205,
+    width: 580,
+    height: 290,
+    rx: 10,
+    fill: "#f8fafc",
+    stroke: "#d8e1eb",
+    "stroke-dasharray": "7 7",
+    "pointer-events": "none"
+  }));
+
+  const courtyardLabel = createSvgElement("text", {
+    x: 425,
+    y: 340,
+    "text-anchor": "middle",
+    "font-size": 23,
+    "font-weight": 700,
+    fill: "#94a3b8",
+    "pointer-events": "none"
+  });
+
+  courtyardLabel.textContent = "중앙 열린 공간";
+  buildingLayer.appendChild(courtyardLabel);
+
+  const openingLabel = createSvgElement("text", {
+    x: 70,
+    y: 350,
+    "text-anchor": "middle",
+    "font-size": 18,
+    "font-weight": 700,
+    fill: "#64748b",
+    "pointer-events": "none"
+  });
+
+  openingLabel.textContent = "개방";
+  buildingLayer.appendChild(openingLabel);
+}
   // 위쪽 후관
   addBuilding(
     125, 50, 750, 150,
