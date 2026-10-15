@@ -60,7 +60,7 @@ function snapToGrid(value) {
   return Math.round(value / GRID_SIZE) * GRID_SIZE;
 }
 function snapSize(value) {
-  return Math.max(GRID_SIZE, snapToGrid(value));
+  return Math.max(10, Math.round(value / 10) * 10);
 }
 function setStatus(message) {
   $("status").textContent = message;
@@ -606,8 +606,8 @@ $("applySizeBtn").addEventListener("click", () => {
     setStatus("가로와 세로 크기를 숫자로 입력하세요.");
     return;
   }
-  place.width = clamp(snapSize(width), 25, 500);
-  place.height = clamp(snapSize(height), 25, 500);
+  place.width = clamp(snapSize(width), 10, 500);
+  place.height = clamp(snapSize(height), 10, 500);
   $("placeWidth").value = place.width;
   $("placeHeight").value = place.height;
   refreshMap();
